@@ -66,27 +66,6 @@ baseline <- read_csv(baseline_file, skip = 1, col_names = variantCounts_colnames
 vatd_t0_file = '../data/counts/VatD/t0.csv'
 vatd_t0 <- read_csv(vatd_t0_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
 
-trpv1_1_9_file = '../data/counts/TRPV1_MiSeq_QC/TRPV1_1-9.csv'
-trpv1_1_9 <- read_csv(trpv1_1_9_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
-trpv1_9_17_file = '../data/counts/TRPV1_MiSeq_QC/TRPV1_9-17.csv'
-trpv1_9_17 <- read_csv(trpv1_9_17_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
-
-TRPV1_overlap9_variants <- bind_rows(trpv1_1_9, trpv1_9_17) %>% group_by(hgvs, pos, chunk, chunk_pos, mutation_type, name, codon, variants, length) %>% summarize(count = sum(count))
-
-trpv1_N1_file = '../data/counts/TRPV1_MiSeq_QC/TRPV1_N1.csv'
-trpv1_N1 <- read_csv(trpv1_N1_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
-trpv1_N2_file = '../data/counts/TRPV1_MiSeq_QC/TRPV1_N2.csv'
-trpv1_N2 <- read_csv(trpv1_N2_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
-
-TRPV1_N_variants <- bind_rows(trpv1_N1, trpv1_N2) %>% group_by(hgvs, pos, chunk, chunk_pos, mutation_type, name, codon, variants, length) %>% summarize(count = sum(count))
-
-trpv1_1_9_file = '../data/counts/TRPV1_NovaSeq_QC/TRPV1_1-9_L1.csv'
-trpv1_1_9 <- read_csv(trpv1_1_9_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
-trpv1_9_17_file = '../data/counts/TRPV1_NovaSeq_QC/TRPV1_9-17_L1.csv'
-trpv1_9_17 <- read_csv(trpv1_9_17_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
-
-TRPV1_overlap9_variants <- bind_rows(trpv1_1_9, trpv1_9_17) %>% group_by(hgvs, pos, chunk, chunk_pos, mutation_type, name, codon, variants, length) %>% summarize(count = sum(count))
-
 trpv1_N1_file = '../data/counts/TRPV1_NovaSeq_QC/TRPV1_N1_L1.csv'
 trpv1_N1 <- read_csv(trpv1_N1_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
 trpv1_N2_file = '../data/counts/TRPV1_NovaSeq_QC/TRPV1_N2_L1.csv'
