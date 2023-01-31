@@ -1,0 +1,1651 @@
+---
+title: "DIMPLE figure generation"
+output: html_notebook
+---
+
+This is a notebook to generate figures for the DIMPLE manuscript.
+
+Color scheme:
+#D55E00 - Vermillion - deletions
+#56B4E9 - Sky blue - insertions
+#009E73 - bluish green - substitutions
+#CC79A7 - reddish purple - synonymous
+
+```{r}
+library(ggplot2)
+library(gglorenz)
+library(readr)
+library(stringr)
+library(tidyverse)
+library(dplyr)
+library(ggridges)
+library(tidyquant)
+library(patchwork)
+library(forcats)
+library(bio3d)
+library(GGally)
+library(scales)
+library(colorspace)
+library(ggpubr)
+library(rstatix)
+library(bio3d)
+library(ggnewscale)
+source("dms_analysis_utilities.R")
+
+
+```
+
+# Preliminaries
+
+Load sequencing data, process, and create dataframes for further analysis and plotting.
+
+```{r}
+variantCounts_colnames <- c("count", "pos", "chunk_pos", "chunk", "mutation_type", "name", "codon", "variants", "length", "hgvs")
+variantCounts_cotypes = "_iiiicccccc"
+
+# In codons
+vatd_chunk_starts = c(1, 42, 85, 127, 169)
+vatd_chunk_ends = c(41, 84, 126, 168, 209)
+vatd_chunks = mapply(c, vatd_chunk_starts, vatd_chunk_ends, SIMPLIFY=FALSE)
+
+kir21_chunk_starts = c(1, 49, 99, 148, 197, 246, 293, 341, 389)
+kir21_chunk_ends = c(48, 98, 147, 196, 245, 292, 340, 388, 436)
+kir21_chunks = mapply(c, kir21_chunk_starts, kir21_chunk_ends, SIMPLIFY=FALSE)
+
+trpv1_chunk_starts = c(1, 50, 101, 151, 201, 251, 300, 349, 398, 447, 496, 545, 594, 643, 692, 741, 791)
+trpv1_chunk_ends = c(49, 100, 150, 200, 250, 299, 348, 397, 446, 495, 544, 593, 642, 691, 740, 790, 838)
+TRPV1_chunks = mapply(c, trpv1_chunk_starts, trpv1_chunk_ends, SIMPLIFY=FALSE)
+
+mor_chunks_starts = c(1, 50, 101, 151, 201, 251, 301, 351)
+mor_chunks_ends = c(49, 100, 150, 200, 250, 300, 350, 400)
+mor_chunks = mapply(c, mor_chunks_starts, mor_chunks_ends, SIMPLIFY=FALSE)
+
+baseline_file = '../data/counts/Kir21/baseline.csv'
+baseline <- read_csv(baseline_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+vatd_t0_file = '../data/counts/VatD/t0.csv'
+vatd_t0 <- read_csv(vatd_t0_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+trpv1_1_9_file = '../data/counts/TRPV1_MiSeq_QC/TRPV1_1-9.csv'
+trpv1_1_9 <- read_csv(trpv1_1_9_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+trpv1_9_17_file = '../data/counts/TRPV1_MiSeq_QC/TRPV1_9-17.csv'
+trpv1_9_17 <- read_csv(trpv1_9_17_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+TRPV1_overlap9_variants <- bind_rows(trpv1_1_9, trpv1_9_17) %>% group_by(hgvs, pos, chunk, chunk_pos, mutation_type, name, codon, variants, length) %>% summarize(count = sum(count))
+
+trpv1_N1_file = '../data/counts/TRPV1_MiSeq_QC/TRPV1_N1.csv'
+trpv1_N1 <- read_csv(trpv1_N1_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+trpv1_N2_file = '../data/counts/TRPV1_MiSeq_QC/TRPV1_N2.csv'
+trpv1_N2 <- read_csv(trpv1_N2_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+TRPV1_N_variants <- bind_rows(trpv1_N1, trpv1_N2) %>% group_by(hgvs, pos, chunk, chunk_pos, mutation_type, name, codon, variants, length) %>% summarize(count = sum(count))
+
+trpv1_1_9_file = '../data/counts/TRPV1_NovaSeq_QC/TRPV1_1-9_L1.csv'
+trpv1_1_9 <- read_csv(trpv1_1_9_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+trpv1_9_17_file = '../data/counts/TRPV1_NovaSeq_QC/TRPV1_9-17_L1.csv'
+trpv1_9_17 <- read_csv(trpv1_9_17_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+TRPV1_overlap9_variants <- bind_rows(trpv1_1_9, trpv1_9_17) %>% group_by(hgvs, pos, chunk, chunk_pos, mutation_type, name, codon, variants, length) %>% summarize(count = sum(count))
+
+trpv1_N1_file = '../data/counts/TRPV1_NovaSeq_QC/TRPV1_N1_L1.csv'
+trpv1_N1 <- read_csv(trpv1_N1_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+trpv1_N2_file = '../data/counts/TRPV1_NovaSeq_QC/TRPV1_N2_L1.csv'
+trpv1_N2 <- read_csv(trpv1_N2_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+TRPV1_N_variants <- bind_rows(trpv1_N1, trpv1_N2) %>% group_by(hgvs, pos, chunk, chunk_pos, mutation_type, name, codon, variants, length) %>% summarize(count = sum(count))
+
+MOR_file = '../data/counts/MOR/library.csv'
+MOR <- read_csv(MOR_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+# Kir2.1 Enrich2 score files
+kir_scores_file = "../data/Enrich2/Kir2.1_sorting/tsv/Kir21_indel_exp/main_identifiers_scores.tsv"
+
+kir_variantscore_colnames <- c("hgvs", "A_SE", "A_epsilon", "A_score", "S_SE", "S_epsilon", "S_score", "SA_SE", "SA_epsilon", "SA_score")
+kir_variantscore_coltypes <- c("character", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric")
+
+kir_scores <- read_delim(kir_scores_file, col_names = kir_variantscore_colnames, skip=3)
+kir_scores <- process_hgvs_df(kir_scores)
+kir_scores$is.wt = kir_scores$mutation_type == "S"
+kir_scores$delta_score = kir_scores$SA_score - kir_scores$A_score
+
+# Make this a long df rather than wide
+
+kir_scores_long <- kir_scores %>% 
+  pivot_longer(cols = ends_with("_score"), names_to="condition", names_pattern = "(.*)_score", values_to = "score") %>%
+  select(hgvs, pos, len, mutation_type, variants, score, condition)
+
+# Read Kir2.1 amplicon sequencing file to find spectrum of designed and non-desired mutations
+Kir21_AEZ_c1_file = '../data/counts/Kir21_AEZ/Kir_c1.csv'
+Kir21_AEZ_c1 <- read_csv(Kir21_AEZ_c1_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c2_file = '../data/counts/Kir21_AEZ/Kir_c2.csv'
+Kir21_AEZ_c2 <- read_csv(Kir21_AEZ_c1_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c3_file = '../data/counts/Kir21_AEZ/Kir_c3.csv'
+Kir21_AEZ_c3 <- read_csv(Kir21_AEZ_c3_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c4_file = '../data/counts/Kir21_AEZ/Kir_c4.csv'
+Kir21_AEZ_c4 <- read_csv(Kir21_AEZ_c4_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c5b_file = '../data/counts/Kir21_AEZ/Kir_c5b.csv'
+Kir21_AEZ_c5b <- read_csv(Kir21_AEZ_c5b_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c5a_file = '../data/counts/Kir21_AEZ/Kir_c5a.csv'
+Kir21_AEZ_c5a <- read_csv(Kir21_AEZ_c5a_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c6a_file = '../data/counts/Kir21_AEZ/Kir_c6a.csv'
+Kir21_AEZ_c6a <- read_csv(Kir21_AEZ_c6a_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c6b_file = '../data/counts/Kir21_AEZ/Kir_c6b.csv'
+Kir21_AEZ_c6b <- read_csv(Kir21_AEZ_c6b_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c7_file = '../data/counts/Kir21_AEZ/Kir_c7.csv'
+Kir21_AEZ_c7 <- read_csv(Kir21_AEZ_c7_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c9_file = '../data/counts/Kir21_AEZ/Kir_c7.csv'
+Kir21_AEZ_c9 <- read_csv(Kir21_AEZ_c9_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c8a_file = '../data/counts/Kir21_AEZ/Kir_c8a.csv'
+Kir21_AEZ_c8a <- read_csv(Kir21_AEZ_c8a_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+Kir21_AEZ_c8b_file = '../data/counts/Kir21_AEZ/Kir_c8b.csv'
+Kir21_AEZ_c8b <- read_csv(Kir21_AEZ_c8b_file, skip = 1, col_names = variantCounts_colnames, col_types=variantCounts_cotypes)
+
+
+```
+
+Map the Kir results onto onto the 3SPI structure - create dataframes with aligned sequence positions
+
+```{r}
+# Map Kir2.1 position numbering to Kir2.2, for mapping
+alignment_cotypes = "cccccciiciciiciiinniccciciiciciciciicicici"
+
+kir_alignment <- read_csv("data/IRK_alignment_master_updated230622.csv",
+                          col_types = alignment_cotypes)
+
+kir_alignment <- kir_alignment %>% mutate(MD_prob = exp(-MD),
+                         MI_prob = exp(-MI))
+
+aligned_kir_scores <- full_join(kir_scores, kir_alignment,
+                            by = c('pos' = 'Kir2_1_FLAG_Resno_mus'),
+                            keep = TRUE)
+
+aligned_kir_scores_summarized <- aligned_kir_scores %>% group_by(pos) %>%
+  summarise(avg_S = mean(S_score, na.rm=TRUE),
+            avg_A = mean(A_score, na.rm=TRUE), 
+            avg_SA = mean(SA_score, na.rm=TRUE),
+            max_S = max(SA_score, na.rm=TRUE),
+            max_A = max(A_score, na.rm=TRUE),
+            min_S = min(SA_score, na.rm=TRUE),
+            min_A = min(A_score, na.rm=TRUE),
+            Kir2_2_Resno_3SPI = first(Kir2_2_Resno_3SPI),
+            IRK_C_PF08466 = first(IRK_C_PF08466),
+            IRK_PF01007 = first(IRK_PF01007),
+            IRK_N_PF08466 = first(IRK_N_PF08466))
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "M") %>% group_by(pos) %>%
+  summarise(avg_S_M = mean(S_score, na.rm=TRUE),
+            max_S_M = max(SA_score, na.rm=TRUE),
+            min_S_M = min(SA_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "D") %>% group_by(pos) %>%
+  summarise(avg_S_D = mean(S_score, na.rm=TRUE),
+            max_S_D = max(SA_score, na.rm=TRUE),
+            min_S_D = min(SA_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "I") %>% group_by(pos) %>%
+  summarise(avg_S_I = mean(S_score, na.rm=TRUE),
+            max_S_I = max(SA_score, na.rm=TRUE),
+            min_S_I = min(SA_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "I" & len == 1) %>% group_by(pos) %>% summarise(S_I1 = mean(S_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "I" & len == 2) %>% group_by(pos) %>% summarise(S_I2 = mean(S_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "I" & len == 3) %>% group_by(pos) %>% summarise(S_I3 = mean(S_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "D" & len == 1) %>% group_by(pos) %>% summarise(S_D1 = mean(S_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "D" & len == 2) %>% group_by(pos) %>% summarise(S_D2 = mean(S_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+aligned_kir_scores_summarized <- merge(aligned_kir_scores_summarized, aligned_kir_scores %>% filter(mutation_type == "D" & len == 3) %>% group_by(pos) %>% summarise(S_D3 = mean(S_score, na.rm=TRUE)),
+  by.x = 'pos',
+  by.y = 'pos',
+  all.x = TRUE,
+  all.y = TRUE)
+
+kir21_3spi_pdb <- read.pdb("Structures/3spi.pdb")
+
+sse_3spi <- dssp(kir21_3spi_pdb, exefile = "dssp", resno=TRUE, full=FALSE, verbose=FALSE)
+sse_list <- data.frame(Kir2_2_Resno_3SPI = strtoi(str_extract(names(sse_3spi$sse), "^[0-9]+")), SS = sse_3spi$sse)
+
+# Add the N and C-termini as pseudo-SS
+sse_list <- full_join(sse_list, full_join(data.frame(Kir2_2_Resno_3SPI=1:40, SS="Nt"), data.frame(Kir2_2_Resno_3SPI=373:423, SS="Ct")), on=pos)
+
+aligned_kir_scores <- full_join(sse_list, aligned_kir_scores,
+                                by = 'Kir2_2_Resno_3SPI',
+                                keep = FALSE)
+
+aligned_kir_scores <- aligned_kir_scores %>% filter(!is.na(SS)) %>%
+                              mutate(SS_simple = replace(SS, SS == " ", "C")) %>%
+                              mutate(SS_simple = replace(SS_simple, SS == "G", "H")) %>%
+                              mutate(SS_simple = replace(SS_simple, SS == "E", "B")) %>%
+                              mutate(SS_simple = replace(SS_simple, SS == "I", "H")) %>%
+                              mutate(SS_simple = replace(SS_simple, SS == "S", "C")) %>%
+                              mutate(SS_simple = replace(SS_simple, SS == "T", "C")) %>%
+                              mutate(SS_simple = replace(SS_simple, SS == "Ct", "NCT")) %>%
+                              mutate(SS_simple = replace(SS_simple, SS == "Nt", "NCT"))
+
+# Add WT residue column
+aligned_kir_scores <- left_join(aligned_kir_scores, 
+          aligned_kir_scores %>% group_by(pos) %>%
+          summarize(hgvs = first(hgvs)) %>%
+          transmute(pos = pos, wt_residue = substr(hgvs, 4, 4)),
+        by = 'pos', keep = TRUE) %>% 
+          select(-pos.y) %>% rename(pos = pos.x)
+
+
+pfam_scores <- aligned_kir_scores %>% group_by(Kir2_1_FLAG_Resno_mus) %>%
+  summarize(Kir2_1_FLAG_Resno_mus = first(Kir2_1_FLAG_Resno_mus), MD = first(MD_prob), MI = first(MI_prob)) %>%
+  pivot_longer(cols=starts_with("M"),
+               names_to = "mutation_type",
+               names_prefix="M") %>%
+  mutate(value = value)
+
+
+```
+
+# Figures
+
+## Figure 1
+### Panel A
+
+Library QC
+
+```{r}
+plot_unstack <- baseline %>% filter(mutation_type != "X") %>% group_by(pos) %>% summarize(count = sum(count)) %>%
+  ggplot(aes(x=pos, y=count)) +
+  geom_bar(stat="identity", width=1.0) +
+  scale_y_log10() + 
+  xlab("Position (AA)") + 
+  ylab("Count") +
+  labs(color = "Mutation type") +
+  theme_classic() 
+
+for (chunk in kir21_chunks) {
+  plot_unstack <- plot_unstack + geom_vline(aes_(xintercept=chunk[1]),linetype="dashed",colour="black",size=0.5) 
+  plot_unstack <- plot_unstack + geom_vline(aes_(xintercept=chunk[2]),linetype="dashed",colour="black",size=0.5)
+}
+
+ggsave("Figures/Panels/1B.pdf", height = 5, width = 10, plot_unstack)
+ggsave("Figures/Panels/1B.png", height = 5, width = 10, plot_unstack)
+
+```
+
+## Figure 2
+### Panel A
+
+Within-chunk positional plot
+
+```{r}
+order <- c("A", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+           "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y",
+           "D_1", "D_2", "D_3",
+           "I_1", "I_2", "I_3")
+
+variant_names <- c("A", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+                   "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y",
+                   "Del x1", "Del x2", "Del x3",
+                   "Ins x1 (G)", "Ins x2 (GS)", "Ins x3 (GSG)") 
+
+panel2A <- baseline %>% 
+  ggplot(aes(x=factor(variants, level = order, labels = variant_names),
+              y=count)) + 
+    geom_boxplot(outlier.colour=NA) +
+    xlab("Variant") + 
+    ylab("Counts") +
+    labs(x = "Variant") + 
+    stat_compare_means(label = "p.signif", method = "t.test",
+                     ref.group = ".all.", hide.ns = TRUE) +
+    ylim(0, 200) + 
+    theme_classic() +
+    theme(axis.text.x = element_text(angle=-45))
+
+print(panel2A)
+
+ggsave("Figures/Panels/2A.pdf", height = 5, width = 10, panel2A)
+ggsave("Figures/Panels/2A.png", height = 5, width = 10, panel2A)
+
+```
+### Panel B
+Ridge plot to test for bias
+
+```{r}
+panel2B <- ggplot(baseline %>% filter(mutation_type != "X" & mutation_type != "S" & chunk == 2), aes(x = count, y=factor(chunk_pos))) +
+  geom_density_ridges(scale=5) +
+  scale_y_discrete(expand = c(0, 0), breaks=c(1, 10, 20, 30, 40, 50)) +
+  scale_x_continuous(expand = c(0, 0), lim = c(-10, 250)) +
+  coord_cartesian(clip = "off") +
+  xlab("Counts") +
+  ylab("Within-chunk position") +
+  labs(colour = "Residue position") +
+  theme_classic()
+
+print(panel2B)
+  
+ggsave("Figures/Panels/2B.pdf", height = 7, width = 5, panel2B)
+ggsave("Figures/Panels/2B.png", height = 7, width = 5, panel2B)
+
+
+```
+
+
+### Panel C
+Lorenz plot for bias
+
+```{r}
+panel2C <- baseline %>% 
+    ggplot(aes(x = count)) + 
+    stat_lorenz(size=1) +
+    stat_lorenz(data=MOR, color = '#E69F00', size=1) +
+    stat_lorenz(data=TRPV1_N_variants, color = '#56B4E9', size=1) +
+    stat_lorenz(data=vatd_t0, color = '#009E73', size=1) +
+    coord_fixed() + 
+    geom_abline(linetype = "dashed") +
+    hrbrthemes::scale_x_percent() +
+    hrbrthemes::scale_y_percent() +
+    theme(legend.title = element_blank()) +
+    labs(x = "Cumulative Percentage of variants",
+         y = "Cumulative Percentage of reads") +
+      annotate_ineq(baseline$count, y = 0.95, color='#000000',
+                  fontface = "italic") +
+      annotate_ineq(TRPV1_N_variants$count,  y = 0.9, color = '#56B4E9',
+                  fontface = "italic") +
+      annotate_ineq(MOR$count,  y = 0.85,color = '#E69F00',
+                  fontface = "italic") +
+      annotate_ineq(vatd_t0$count,  y = 0.8,color = '#009E73',
+                  fontface = "italic") +
+    theme_classic()
+
+print(panel2C)
+
+ggsave("Figures/Panels/2C.pdf", height = 5, width = 5, panel2C)
+ggsave("Figures/Panels/2C.png", height = 5, width = 5, panel2C)
+```
+
+## Figure 3
+### Panel C
+
+Kir2.1 distribution of fitness effects
+
+```{r}
+panel3C <- ggplot(kir_scores %>% filter(mutation_type != "X")) +
+  geom_density(aes(x = S_score, color=factor(mutation_type, level=c("D", "I", "M", "S"))), bw = "nrd", kernel='gaussian', size=1) +
+  xlab("Enrich2 score") + 
+  ylab("Density") + 
+  geom_vline(xintercept = 0, linetype="dotted") +
+  theme_classic() + 
+  scale_color_manual(values=cbp1) +
+  labs(color = "Mutation type")
+
+print(panel3C)
+
+ggsave("Figures/Panels/3C.pdf", height = 4, width = 5, panel3C)
+ggsave("Figures/Panels/3C.png", height = 4, width = 5, panel3C)
+```
+
+## Figure 4
+### Panel A
+
+Heatmap - Surface expression
+
+```{r}
+
+kir21_wt_fasta = "sequences/Kir21.fasta"
+
+kir21_wt_fasta_con=file(kir21_wt_fasta, open="r")
+kir21_wt_sequence = readLines(kir21_wt_fasta_con)[2]
+close(kir21_wt_fasta_con)
+
+
+order <- c('D_3','D_2','D_1','I_3','I_2','I_1','H', 'K', 'R', 'D', 'E',
+          'C','M','N','Q','S','T','A','I','L','V','W','F',
+          'Y','G','P')
+
+variant_names <- c("Del x3",'Del x2','Del x1','Ins x3 (GSG)','Ins x (GS)','Ins x1 (G)','H', 'K', 'R', 'D', 'E',
+          'C','M','N','Q','S','T','A','I','L','V','W','F',
+          'Y','G','P')
+
+kir_wt_1 = str_split(substr(kir21_wt_sequence, 1, 150), '')[[1]]
+kir_wt_2 = str_split(substr(kir21_wt_sequence, 151, 300), '')[[1]]
+kir_wt_3 = str_split(substr(kir21_wt_sequence, 301, 440), '')[[1]]
+
+#surface plot
+Surface_row1 = ggplot(data = kir_scores[kir_scores$pos %in% c(2:150),], 
+                      aes(x = pos, y = factor(variants, level = order, labels = variant_names), fill = S_score )) +
+  geom_tile(aes(color = as.factor(is.wt)), size = 0.2) +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0,l1=0.2, l3 = 0.2, p1=0.9, p3 = .4, p4 = 0.9,rev=FALSE, na.value = 'lightyellow',limits=c(-5,3)) + 
+  scale_color_manual(values = c(NA,'green')) +
+  scale_x_continuous(breaks = seq(0, 400, by = 5),
+                     expand = c(0,0),
+                     sec.axis = sec_axis(
+                      trans = ~.,
+                      name = "Sequence",
+                      breaks = seq(1, 150),
+                      labels = kir_wt_1,
+                      guide = derive()
+                    )) +
+  coord_fixed(ratio = 1) +
+  theme(
+    panel.background = element_rect(fill = "white",
+                                    colour = "white",
+                                    size = 0.5, linetype = "solid"),
+    panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                    colour = "lightgray"), 
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 6),
+    axis.text.y = element_text(size = 4),
+    axis.text = element_text(size = 4),
+    axis.text.x.top = element_text(angle = 0, hjust = 0.5, family = "mono"),
+    axis.ticks = element_blank(),
+    legend.position="none"
+  ) +
+  labs(y = "Mutation", x = "Position")
+
+Surface_row2 = ggplot(data = kir_scores[kir_scores$pos %in% c(151:300),], 
+                      aes(x = pos, y = factor(variants, level = order, labels = variant_names), fill = S_score )) +
+  geom_tile(aes(color = as.factor(is.wt)), size = 0.2) +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0,l1=0.2, l3 = 0.2, p1=0.9, p3 = .4, p4 = 0.9,rev=FALSE, na.value = 'lightyellow',limits=c(-5,3)) + 
+  scale_color_manual(values = c(NA,'green')) +
+  scale_x_continuous(breaks = seq(0, 400, by = 5),
+                     expand = c(0,0),
+                     sec.axis = sec_axis(
+                      trans = ~.,
+                      name = "Sequence",
+                      breaks = seq(151, 300),
+                      labels = kir_wt_2,
+                      guide = derive()
+                    )) +
+  coord_fixed(ratio = 1) +
+  theme(
+    panel.background = element_rect(fill = "white",
+                                    colour = "white",
+                                    size = 0.5, linetype = "solid"),
+    panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                    colour = "lightgray"), 
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 6),
+    axis.text.y = element_text(size = 4),
+    axis.text = element_text(size = 4),
+    axis.text.x.top = element_text(angle = 0, hjust = 0.5, family = "mono"),
+    axis.ticks = element_blank(),
+    legend.position="none"
+  ) +
+  labs(y = "Mutation", x = "Position")
+
+Surface_row3 = ggplot(data = kir_scores[kir_scores$pos %in% c(301:440),], 
+                      aes(x = pos, y = factor(variants, level = order, labels = variant_names), fill = S_score )) +
+  geom_tile(aes(color = as.factor(is.wt)), size = 0.2) +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0,l1=0.2, l3 = 0.2, p1=0.9, p3 = .4, p4 = 0.9,rev=FALSE, na.value = 'lightyellow',limits=c(-5,3)) + 
+  scale_color_manual(values = c(NA,'green')) +
+  scale_x_continuous(breaks = seq(0, 440, by = 5),
+                     expand = c(0,0),
+                     sec.axis = sec_axis(
+                      trans = ~.,
+                      name = "Sequence",
+                      breaks = seq(301, 440),
+                      labels = kir_wt_3,
+                      guide = derive()
+                    )) +
+  coord_fixed(ratio = 1) +
+  theme(
+    panel.background = element_rect(fill = "white",
+                                    colour = "white",
+                                    size = 0.5, linetype = "solid"),
+    panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                    colour = "lightgray"), 
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 6),
+    axis.text.y = element_text(size = 4),
+    axis.text = element_text(size = 4),
+    axis.text.x.top = element_text(angle = 0, hjust = 0.5, family = "mono"),
+    axis.ticks = element_blank(),
+    legend.position="none"
+  ) +
+  labs(y = "Mutation", x = "Position")
+
+
+Surface_DMS = ggarrange(Surface_row1, Surface_row2, Surface_row3,
+                        nrow = 3, ncol = 1)
+
+ggsave("Figures/Panels/4.pdf", height = 7, width = 8.5, Surface_DMS)
+ggsave("Figures/Panels/4.png", height = 7, width = 8.5, Surface_DMS)
+```
+
+## Figure 5
+### Panel B
+
+Inset of fitness effects at slide helix (1, 2, 3 deletions)
+
+```{r}
+# Loop ~ 58-61 in 3spi
+
+# Slide helix and M1:
+# 60-110
+
+plot_D <- ggplot(aligned_kir_scores %>% filter(mutation_type == "D" ), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) + 
+  geom_line() +
+  labs(x = "Position", color = "Deletion length", y="Surface score") + 
+  theme_classic() +
+  scale_x_continuous(lim = c(60, 110)) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Reds',
+    direction = 1,
+  ) + 
+  geom_hline(yintercept=0, linetype="dotted")
+
+ggsave("Figures/Panels/5B.png", height = 3, width = 7, plot_D)
+ggsave("Figures/Panels/5B.pdf", height = 3, width = 7, plot_D)
+
+```
+
+
+### Panel D
+
+Figure 5 D - inset of fitness effects at sheets
+
+```{r}
+# 3x Beta sheet
+
+# In FLAG-tagged sequence: 
+  
+plot_1_I <- ggplot(aligned_kir_scores %>% filter(mutation_type == "I"), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) + 
+  geom_line() +
+  labs(x = "Position", color = "Insertion length", y="Surface score") + 
+  theme_classic() +
+  theme(legend.position="none"
+        ) +
+  xlim(225, 243) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Blues',
+    direction = 1,
+  ) + 
+  geom_hline(yintercept=0, linetype="dotted")
+
+plot_2_I <- ggplot(aligned_kir_scores %>% filter(mutation_type == "I"), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) + 
+  geom_line() +
+  labs(x = "Position", color = "Insertion length", y="Surface score") + 
+  theme_classic() +
+  theme(axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title = element_blank(),
+  ) +
+  scale_x_continuous(breaks=c(300, 305, 310, 315, 320, 325), lim = c(300, 325)) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Blues',
+    direction = 1,
+  ) + 
+  geom_hline(yintercept=0, linetype="dotted")
+
+
+plot_1_D <- ggplot(aligned_kir_scores %>% filter(mutation_type == "D" ), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) + 
+  geom_line() +
+  labs(x = "Position", color = "Deletion length", y="Surface score") + 
+  theme_classic() +
+  theme(legend.position="none"
+        ) +
+  xlim(225, 243) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Reds',
+    direction = 1,
+  ) + 
+  geom_hline(yintercept=0, linetype="dotted")
+
+plot_2_D <- ggplot(aligned_kir_scores %>% filter(mutation_type == "D" ), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) + 
+  geom_line() +
+  labs(x = "Position", color = "Deletion length", y="Surface score") + 
+  theme_classic() +
+  theme(axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title = element_blank(),
+  ) +
+  scale_x_continuous(breaks=c(300, 305, 310, 315, 320, 325), lim = c(300, 325)) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Reds',
+    direction = 1,
+  ) + 
+  geom_hline(yintercept=0, linetype="dotted")
+
+#18/25 = 0.72
+
+plot_1_ID <- ggplot(aligned_kir_scores %>% filter(mutation_type == "D" ), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) + 
+  geom_line() +
+  labs(x = "Position", color = "Deletion length", y="Surface score") + 
+  theme_classic() +
+  theme(legend.position="none"
+        ) +
+  xlim(225, 243) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Reds',
+    direction = 1,
+  ) + 
+  new_scale_color() +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Blues',
+    direction = 1,
+  ) + 
+  geom_line(data = aligned_kir_scores %>% filter(mutation_type == "I" ), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) +
+  geom_hline(yintercept=0, linetype="dotted")
+
+plot_2_ID <- ggplot(aligned_kir_scores %>% filter(mutation_type == "D" ), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) + 
+  geom_line() +
+  labs(x = "Position", color = "Deletion length", y="Surface score") + 
+  theme_classic() +
+  theme(axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title = element_blank(),
+  ) +
+  scale_x_continuous(breaks=c(300, 305, 310, 315, 320, 325), lim = c(300, 325)) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Reds',
+    direction = 1,
+  ) + 
+  new_scale_color() +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Blues',
+    direction = 1,
+  ) + 
+  geom_line(data = aligned_kir_scores %>% filter(mutation_type == "I" ), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) +
+  geom_hline(yintercept=0, linetype="dotted")
+
+panel5D <- plot_1_ID + plot_2_ID + plot_layout(nrow = 1, widths = c(2.16, 3) )
+
+print(panel5D)
+
+ggsave("Figures/Panels/5D.png", height = 3, width = 7, panel5D)
+ggsave("Figures/Panels/5D.pdf", height = 3, width = 7, panel5D)
+
+```
+
+
+## Figure 6
+
+### Panel A
+Secondary structure vs length vs fitness
+
+```{r}
+SS_level <- c("B", "H", "C", "NCT")
+
+fig_6a_df <- aligned_kir_scores %>% filter(!is.na(SS)) %>% filter(mutation_type != "S" & mutation_type != "X" & mutation_type != "M")  %>%
+                              mutate(SS = replace(SS, SS == " ", "C")) %>%
+                              mutate(SS = replace(SS, SS == "G", "H")) %>%
+                              mutate(SS = replace(SS, SS == "E", "B")) %>%
+                              mutate(SS = replace(SS, SS == "I", "H")) %>%
+                              mutate(SS = replace(SS, SS == "S", "C")) %>%
+                              mutate(SS = replace(SS, SS == "T", "C")) %>%
+                              mutate(SS = replace(SS, SS == "Ct", "NCT")) %>%
+                              mutate(SS = replace(SS, SS == "Nt", "NCT"))
+
+
+plot <- ggplot(data = fig_6a_df %>% filter(mutation_type == "D")) +
+  facet_grid(rows = vars(factor(SS, levels=SS_level)), scales = "free_y") +
+  geom_density(aes(x = S_score, color = variants), bw="nrd", size=1) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Reds',
+    direction = 1,
+  ) + 
+  new_scale_color() +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Blues',
+    direction = 1,
+  ) + 
+  geom_density(data = fig_6a_df %>% filter(mutation_type == "I"), aes(x = S_score, color = variants), bw="nrd", size=1) +
+  xlab("Enrich2 score") + 
+  ylab("Density") + 
+  geom_vline(xintercept = 0, linetype="dotted") +
+  theme_classic() + 
+  labs(color = "Mutation type")
+
+ggsave("Figures/Panels/6A.png", height = 7, width = 6)
+ggsave("Figures/Panels/6A.pdf", height = 7, width = 6)
+
+
+```
+
+### Panel B
+
+Indel fitness distribution across sequence
+
+```{r}
+pfam_heatmap <- ggplot(pfam_scores %>% filter(value > 0.017) ) +
+  geom_bar(size = 1, aes(x = Kir2_1_FLAG_Resno_mus, y = value, color = factor(mutation_type)), stat="identity", position="dodge") +
+  scale_fill_distiller(palette = 'RdBu', type = 'div', direction = 1, na.value = "white") +
+  theme_classic() + 
+  scale_x_continuous(expand = c(0,0), limits = c(0, 436)) + 
+  scale_y_continuous(breaks = c(-0.3, 0, 0.3)) + 
+  theme(
+    axis.text.y = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    axis.title.x = element_blank()
+)
+
+plot_faceted <- ggplot(aligned_kir_scores %>% filter(mutation_type == "D" | mutation_type == "I" & len == 1) %>% group_by(Kir2_1_FLAG_Resno_mus, mutation_type) %>% summarize(avg_S = mean(S_score))) + 
+    geom_line(aes(x=Kir2_1_FLAG_Resno_mus, y=avg_S)) +
+    facet_wrap(vars(mutation_type), dir="v", scales="free") +
+    labs(x = "Position", color = "Indels", y="Average surface score") + 
+    scale_x_continuous(breaks=c(1, 50, 100, 150, 200, 250, 300, 350, 400)) +
+  theme_classic() + 
+  scale_x_continuous(expand = c(0,0)) + 
+    scale_color_manual(values=cbp1) +
+  geom_hline(yintercept=0, linetype="dotted")
+
+
+#ggsave("Figures/Panels/6B_avgDI_faceted.pdf", height = 5, width = 10)
+
+plot_unfaceted_avg <- ggplot(aligned_kir_scores %>% filter(mutation_type == "D" | mutation_type == "I") %>% group_by(Kir2_1_FLAG_Resno_mus, mutation_type) %>% summarize(avg_S = mean(S_score))) + 
+    geom_line(aes(x=Kir2_1_FLAG_Resno_mus, y=avg_S, color=mutation_type)) +
+    labs(x = "Position", color = "Indels", y="Average surface score") + 
+    scale_x_continuous(breaks=c(1, 50, 100, 150, 200, 250, 300, 350, 400)) +
+  theme_classic() + 
+  scale_x_continuous(expand = c(0,0)) + 
+    scale_color_manual(values=cbp1) +
+  geom_hline(yintercept=0, linetype="dotted")
+
+plot_unfaceted_1s <- ggplot(aligned_kir_scores %>% filter(mutation_type == "D" | mutation_type == "I" & len == 1) %>% group_by(Kir2_1_FLAG_Resno_mus, mutation_type) %>% summarize(avg_S = mean(S_score))) + 
+    geom_line(aes(x=Kir2_1_FLAG_Resno_mus, y=avg_S, color=mutation_type)) +
+    labs(x = "Position", color = "Indels", y="Surface score") + 
+    scale_x_continuous(breaks=c(1, 50, 100, 150, 200, 250, 300, 350, 400)) +
+  theme_classic() + 
+  scale_x_continuous(expand = c(0,0)) + 
+    scale_color_manual(values=cbp1) +
+  geom_hline(yintercept=0, linetype="dotted")
+
+fig_6b_avg <- pfam_heatmap / plot_unfaceted_avg + plot_layout(widths = 10, heights = c(1, 4))
+fig_6b_1s  <- pfam_heatmap / plot_unfaceted_1s  + plot_layout(widths = 10, heights = c(1, 4))
+
+ggsave("Figures/Panels/6B.pdf", height = 3.5, width = 10, fig_6b_avg)
+ggsave("Figures/Panels/6B.png", height = 3.5, width = 10, fig_6b_avg)
+
+#ggsave("Figures/Panels/6B_1s.pdf", height = 3.5, width = 10, fig_6b_1s)
+#ggsave("Figures/Panels/6B_1s.png", height = 3.5, width = 10, fig_6b_1s)
+```
+
+## SI figures
+SI figs go here.
+
+# Supplemental figure 3
+
+```{r}
+# Chunk normalized position bar plot - Kir2.1
+  plot <- baseline %>% filter(mutation_type != "S") %>% 
+    ggplot(aes(y=factor(chunk_pos), x=count)) +
+      geom_violin() +
+    facet_grid(cols = vars(chunk), scales = "fixed") +
+    scale_y_discrete(breaks=c(1, 10, 20, 30, 40, 50)) +
+    scale_x_continuous(breaks=c(0, 100, 200, 300)) +
+    xlim(0, 300) +
+    xlab("Counts") + 
+    ylab("Chunk position (AA)") +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle=-45))
+  
+  ggsave("Figures/SI/SI_3A.pdf", height = 5, width = 10)
+  ggsave("Figures/SI/SI_3A.png", height = 5, width = 10)
+```
+
+```{r}
+plot_baseline_chunks <- baseline %>% filter(mutation_type != "X") %>%
+  group_by(pos) %>%
+  summarize(count = sum(count), chunk = first(chunk), chunk_pos = first(chunk_pos)) %>%
+  group_by(chunk) %>%
+  ggplot(aes(y=count, x=as.factor(chunk))) +
+  geom_boxplot() +
+  xlab("Chunk") + 
+  ylab("Counts per position") +
+  ggtitle(paste("Baseline Kir2.1 library")) +
+  theme_classic() 
+
+plot_baseline_chunks <- plot_baseline_chunks + geom_hline(yintercept = baseline_mean[[1]], linetype=2)
+plot_baseline_chunks <- plot_baseline_chunks + geom_hline(yintercept = baseline_mean[[1]]/2, linetype=3)
+plot_baseline_chunks <- plot_baseline_chunks + geom_hline(yintercept = baseline_mean[[1]]*2, linetype=3)
+
+print(plot_baseline_chunks)
+
+ggsave("Figures/SI/SI_3B.pdf", height = 4, width = 8, plot_baseline_chunks)
+ggsave("Figures/SI/SI_3B.png", height = 4, width = 8, plot_baseline_chunks)
+```
+
+
+# Supplemental figure 4
+```{r}
+plot_ridge_TRPV1 <- ggplot(TRPV1_N_variants %>% filter(mutation_type != "X" & mutation_type != "S" & chunk == 2), aes(x = count, y=factor(chunk_pos))) +
+  geom_density_ridges(scale=5) +
+  scale_y_discrete(expand = c(0, 0), breaks=c(1, 10, 20, 30, 40, 50)) +
+  scale_x_continuous(expand = c(0, 0), lim = c(-10, 80)) +
+  coord_cartesian(clip = "off") +
+  xlab("Counts") +
+  ylab("Within-chunk position") +
+  labs(colour = "Residue position") +
+  theme_classic()
+  
+plot_ridge_vatd <- ggplot(vatd_t0 %>% filter(mutation_type != "X" & mutation_type != "S" & chunk == 2), aes(x = count, y=factor(chunk_pos))) +
+  geom_density_ridges(scale=5) +
+  scale_y_discrete(expand = c(0, 0), breaks=c(1, 10, 20, 30, 40, 50)) +
+  scale_x_continuous(expand = c(0, 0), lim = c(-10, 500)) +
+  coord_cartesian(clip = "off") +
+  xlab("Counts") +
+  ylab("Within-chunk position") +
+  labs(colour = "Residue position") +
+  theme_classic()
+  
+plot_ridge_MOR <- ggplot(MOR %>% filter(mutation_type != "X" & mutation_type != "S" & chunk == 2), aes(x = count, y=factor(chunk_pos))) +
+  geom_density_ridges(scale=5) +
+  scale_y_discrete(expand = c(0, 0), breaks=c(1, 10, 20, 30, 40, 50)) +
+  scale_x_continuous(expand = c(0, 0), lim = c(-10, 30)) +
+  coord_cartesian(clip = "off") +
+  xlab("Counts") +
+  ylab("Within-chunk position") +
+  labs(colour = "Residue position") +
+  theme_classic()
+
+plot_bar_vatd <- vatd_t0 %>% filter(mutation_type != "X") %>% group_by(pos) %>% summarize(count = sum(count)) %>%
+  ggplot(aes(x=pos, y=count)) +
+  scale_y_continuous(trans='log10') +
+  geom_bar(stat="identity", width=1.01) +
+  xlab("Position (AA)") + 
+  ylab("Count") +
+  labs(color = "Mutation type") +
+  ggtitle(paste("VatD library")) +
+  scale_fill_manual(values=cbp1) +
+  scale_color_manual(values=cbp1) +
+  theme_classic() 
+
+for (chunk in vatd_chunks) {
+  plot_bar_vatd <- plot_bar_vatd + geom_vline(aes_(xintercept=chunk[1]),linetype="dashed",colour="black",size=0.5) 
+  plot_bar_vatd <- plot_bar_vatd + geom_vline(aes_(xintercept=chunk[2]),linetype="dashed",colour="black",size=0.5)
+}
+
+plot_bar_TRPV1 <- TRPV1_N_variants %>% filter(mutation_type != "X") %>% group_by(pos) %>% summarize(count = sum(count)) %>%
+  ggplot(aes(x=pos, y=count)) +
+  scale_y_continuous(trans='log10') +
+  geom_bar(stat="identity", width=1.01) +
+  xlab("Position (AA)") + 
+  ylab("Count") +
+  labs(color = "Mutation type") +
+  ggtitle(paste("TRPV1 library")) +
+  scale_fill_manual(values=cbp1) +
+  scale_color_manual(values=cbp1) +
+  theme_classic() 
+
+for (chunk in TRPV1_chunks) {
+  plot_bar_TRPV1 <- plot_bar_TRPV1 + geom_vline(aes_(xintercept=chunk[1]),linetype="dashed",colour="black",size=0.5) 
+  plot_bar_TRPV1 <- plot_bar_TRPV1 + geom_vline(aes_(xintercept=chunk[2]),linetype="dashed",colour="black",size=0.5)
+}
+
+plot_bar_MOR <- MOR %>% filter(mutation_type != "X") %>% group_by(pos) %>% summarize(count = sum(count)) %>%
+  ggplot(aes(x=pos, y=count)) +
+  scale_y_continuous(trans='log10') +
+  geom_bar(stat="identity", width=1.01) +
+  xlab("Position (AA)") + 
+  ylab("Count") +
+  labs(color = "Mutation type") +
+  ggtitle(paste("MOR library")) +
+  scale_fill_manual(values=cbp1) +
+  scale_color_manual(values=cbp1) +
+  theme_classic() 
+
+for (chunk in mor_chunks) {
+  plot_bar_MOR <- plot_bar_MOR + geom_vline(aes_(xintercept=chunk[1]),linetype="dashed",colour="black",size=0.5) 
+  plot_bar_MOR <- plot_bar_MOR + geom_vline(aes_(xintercept=chunk[2]),linetype="dashed",colour="black",size=0.5)
+}
+
+plot_box_TRPV1 <- TRPV1_N_variants %>% 
+  ggplot(aes(x=factor(variants, level = order, labels = variant_names),
+              y=count)) + 
+    geom_boxplot(outlier.color=NA) +
+    xlab("Variant") + 
+    ylab("Counts") +
+    stat_compare_means(label = "p.signif", method = "t.test",
+                     ref.group = ".all.", hide.ns = TRUE) +
+    ylim(0, 70) + 
+    theme_classic() +
+    theme(axis.text.x = element_text(angle=-45))
+
+plot_box_vatd <- vatd_t0 %>% 
+  ggplot(aes(x=factor(variants, level = order, labels = variant_names),
+              y=count)) + 
+    geom_boxplot(outlier.color=NA) +
+    xlab("Variant") + 
+    ylab("Counts") +
+    stat_compare_means(label = "p.signif", method = "t.test",
+                     ref.group = ".all.", hide.ns = TRUE) +
+    ylim(0, 600) + 
+    theme_classic() +
+    theme(axis.text.x = element_text(angle=-45))
+
+plot_box_MOR <- MOR %>% 
+  ggplot(aes(x=factor(variants, level = order, labels = variant_names),
+              y=count)) + 
+    geom_boxplot(outlier.color=NA) +
+    xlab("Variant") + 
+    ylab("Counts") +
+    stat_compare_means(label = "p.signif", method = "t.test",
+                     ref.group = ".all.", hide.ns = TRUE) +
+    ylim(0, 30) + 
+    theme_classic() +
+    theme(axis.text.x = element_text(angle=-45))
+
+SI_fig_4 <- (plot_bar_TRPV1 + plot_box_TRPV1 + plot_ridge_TRPV1) / (plot_bar_MOR + plot_box_MOR + plot_ridge_MOR) / (plot_bar_vatd + plot_box_vatd + plot_ridge_vatd)
+
+ggsave("Figures/SI/SI_4.png", height = 7, width = 15, SI_fig_4)
+ggsave("Figures/SI/SI_4.pdf", height = 7, width = 15, SI_fig_4)
+```
+
+# Supplemental figure 5
+```{r}
+  # Chunk normalized position bar plot - TRPV1
+  plot_violin_TRPV1 <- TRPV1_N_variants %>% filter(mutation_type != "S") %>% 
+    ggplot(aes(y=factor(chunk_pos), x=count)) +
+      geom_violin() +
+    facet_grid(cols = vars(chunk), scales = "fixed") +
+    scale_y_discrete(breaks=c(1, 10, 20, 30, 40, 50)) +
+    scale_x_continuous(breaks=c(0, 100, 200)) +
+    xlim(0, 200) +
+    xlab("Counts") + 
+    ylab("Chunk position (AA)") +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle=-45))
+  
+  ggsave("Figures/SI/SI_5A.png", height = 5, width = 10, plot_violin_TRPV1)
+  ggsave("Figures/SI/SI_5A.pdf", height = 5, width = 10, plot_violin_TRPV1)
+
+  # Chunk normalized position bar plot - MOR
+  plot_violin_MOR <- MOR %>% filter(mutation_type != "S") %>% 
+    ggplot(aes(y=factor(chunk_pos), x=count)) +
+      geom_violin() +
+    facet_grid(cols = vars(chunk), scales = "fixed") +
+    scale_y_discrete(breaks=c(1, 10, 20, 30, 40, 50)) +
+    scale_x_continuous(breaks=c(0, 100, 200, 300)) +
+    xlim(0, 50) +
+    xlab("Counts") + 
+    ylab("Chunk position (AA)") +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle=-45))
+
+  ggsave("Figures/SI/SI_5B.png", height = 10, width = 5, plot_violin_MOR)
+  ggsave("Figures/SI/SI_5B.pdf", height = 10, width = 5, plot_violin_MOR)
+
+  
+    # Chunk normalized position bar plot - MOR
+  plot_violin_vatd <- vatd_t0 %>% filter(mutation_type != "S") %>% 
+    ggplot(aes(y=factor(chunk_pos), x=count)) +
+      geom_violin() +
+    facet_grid(cols = vars(chunk), scales = "fixed") +
+    scale_y_discrete(breaks=c(1, 10, 20, 30, 40, 50)) +
+    scale_x_continuous(breaks=c(0, 100, 200, 300)) +
+    xlim(0, 400) +
+    xlab("Counts") + 
+    ylab("Chunk position (AA)") +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle=-45))
+  
+  ggsave("Figures/SI/SI_5C.png", height = 10, width = 5, plot_violin_vatd)
+  ggsave("Figures/SI/SI_5C.pdf", height = 10, width = 5, plot_violin_vatd)
+```
+
+## Panels D, E, F
+```{r}
+
+plot_baseline_chunks_vatd <- vatd_t0 %>% filter(mutation_type != "X") %>%
+  group_by(pos) %>%
+  summarize(count = sum(count), chunk = first(chunk), chunk_pos = first(chunk_pos)) %>%
+  group_by(chunk) %>%
+  ggplot(aes(y=count, x=as.factor(chunk))) +
+  geom_boxplot() +
+  xlab("Chunk") + 
+  ylab("Counts per position") +
+  ggtitle(paste("VatD")) +
+  theme_classic() 
+
+plot_baseline_chunks_vatd <- plot_baseline_chunks_vatd + geom_hline(yintercept = vatd_t0_mean[[1]], linetype=2)
+plot_baseline_chunks_vatd <- plot_baseline_chunks_vatd + geom_hline(yintercept = vatd_t0_mean[[1]]/2, linetype=3)
+plot_baseline_chunks_vatd <- plot_baseline_chunks_vatd + geom_hline(yintercept = vatd_t0_mean[[1]]*2, linetype=3)
+
+plot_baseline_chunks_TRPV1 <- TRPV1_N_variants %>% filter(mutation_type != "X") %>%
+  group_by(pos) %>%
+  summarize(count = sum(count), chunk = first(chunk), chunk_pos = first(chunk_pos)) %>%
+  group_by(chunk) %>%
+  ggplot(aes(y=count, x=as.factor(chunk))) +
+  geom_boxplot() +
+  xlab("Chunk") + 
+  ylab("Counts per position") +
+  ggtitle(paste("TRPV1")) +
+  theme_classic() 
+
+plot_baseline_chunks_TRPV1 <- plot_baseline_chunks_TRPV1 + geom_hline(yintercept = TRPV1_mean[[1]], linetype=2)
+plot_baseline_chunks_TRPV1 <- plot_baseline_chunks_TRPV1 + geom_hline(yintercept = TRPV1_mean[[1]]/2, linetype=3)
+plot_baseline_chunks_TRPV1 <- plot_baseline_chunks_TRPV1 + geom_hline(yintercept = TRPV1_mean[[1]]*2, linetype=3)
+
+plot_baseline_chunks_MOR <- MOR %>% filter(mutation_type != "X") %>%
+  group_by(pos) %>%
+  summarize(count = sum(count), chunk = first(chunk), chunk_pos = first(chunk_pos)) %>%
+  group_by(chunk) %>%
+  ggplot(aes(y=count, x=as.factor(chunk))) +
+  geom_boxplot() +
+  xlab("Chunk") + 
+  ylab("Counts per position") +
+  ggtitle(paste("MOR")) +
+  theme_classic() 
+
+plot_baseline_chunks_MOR <- plot_baseline_chunks_MOR + geom_hline(yintercept = MOR_mean[[1]], linetype=2)
+plot_baseline_chunks_MOR <- plot_baseline_chunks_MOR + geom_hline(yintercept = MOR_mean[[1]]/2, linetype=3)
+plot_baseline_chunks_MOR <- plot_baseline_chunks_MOR + geom_hline(yintercept = MOR_mean[[1]]*2, linetype=3)
+
+plot_baseline_chunks_SI <- plot_baseline_chunks_TRPV1 / plot_baseline_chunks_MOR / plot_baseline_chunks_vatd
+
+ggsave("Plots/Figures/Panels/SI5_DEF_errors.pdf", height = 8, width = 5, plot_baseline_chunks_SI)
+```
+
+# Supplemental figure 7
+## Panel A - Correlations b/w replicates
+```{r}
+kir_scores_shared_file ="../data/Enrich2/Kir2.1_sorting/tsv/Kir21_indel_exp/main_identifiers_scores_shared.tsv"
+
+kir_shared_colnames <- c("hgvs", "A_SE_R1", "A_score_R1",
+                                 "A_SE_R2", "A_score_R2",
+                                 "S_SE_R1", "S_score_R1",
+                                 "S_SE_R2", "S_score_R2",
+                                 "S_SE_R3", "S_score_R3",
+                                 "SA_SE_R1", "SA_score_R1",
+                                 "SA_SE_R2", "SA_score_R2")
+
+kir_shared_coltypes <- c("character", "numeric", "numeric",
+                                "numeric", "numeric",
+                                "numeric", "numeric",
+                                "numeric", "numeric",
+                                "numeric", "numeric",
+                                "numeric", "numeric",
+                                "numeric", "numeric")
+
+kir_scores_shared <- read_delim(kir_scores_shared_file, col_names = kir_shared_colnames, skip=5)
+
+plot_SI_7A <- ggpairs(kir_scores_shared, columns=c('S_score_R1', 'S_score_R2', 'S_score_R3')) +
+  theme_classic()
+
+ggsave("Figures/SI/SI_7A.pdf", height = 7, width = 7, plot_SI_7A)
+ggsave("Figures/SI/SI_7A.png", height = 7, width = 7, plot_SI_7A)
+```
+
+
+7 B - Correlations b/w this and elife paper
+
+```{r}
+elife_data_file = "data/surface_mod.csv"
+elife_colnames = c("pos",	"variants", "S_score_elife", "S_se_elife", "S_epsilon_elife")
+
+elife_data <- read_csv(elife_data_file, skip = 1, col_names = elife_colnames)
+elife_data <- elife_data %>% mutate(variants = aa321(toupper(variants)))
+
+plot_SI_7B <- ggplot(data = full_join(elife_data, kir_scores), aes(y=S_score_elife, x=S_score)) + 
+  geom_point(size = 0.1) + 
+  geom_smooth(method=lm, fullrange=TRUE, show.legend=TRUE) +
+  ylim(-10, 6) +
+  xlim(-7, 6) +
+  ylab("Coyote-Maestas et al., 2022") +
+  xlab("This work") +
+  geom_hline(yintercept=0, linetype=3) +
+  geom_vline(xintercept=0, linetype=3) +
+  annotate("text", x = -3, y = 5, col = "black", size = 4,
+    label = paste("Pearson correlation coefficient = ", signif(
+      cor(
+        full_join(elife_data, kir_scores)$S_score_elife,
+        full_join(elife_data, kir_scores)$S_score,
+        use = "complete.obs",
+        method="pearson"),
+      3))) +
+   theme_classic()
+
+ggsave("Figures/SI/SI_7B.pdf", height = 5, width = 5, plot_SI_7B)
+ggsave("Figures/SI/SI_7B.png", height = 5, width = 5, plot_SI_7B)
+
+```
+
+# Supplemental figure 8
+```{r}
+plot_ins <- ggplot(kir_scores %>% filter(mutation_type == "I")) +
+  geom_density(aes(x = S_score, color=factor(variants, level=c("I_1", "I_2", "I_3"))), bw = "nrd", kernel='gaussian', size=1) +
+  xlab("Enrich2 score") + 
+  ylab("Density") + 
+  geom_vline(xintercept = 0, linetype="dotted") +
+  theme_classic(base_family = "Helvetica") + 
+  scale_x_continuous(limits = c(-6, 6)) + 
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Blues',
+    direction = 1,
+  ) + 
+  labs(color = "Mutation type")
+
+plot_del <- ggplot(kir_scores %>% filter(mutation_type == "D")) +
+  geom_density(aes(x = S_score, color=factor(variants, level=c("D_1", "D_2", "D_3"))), bw = "nrd", kernel='gaussian', size=1) +
+  xlab("Enrich2 score") + 
+  ylab("Density") + 
+  geom_vline(xintercept = 0, linetype="dotted") +
+  theme_classic(base_family = "Helvetica") + 
+  scale_x_continuous(limits = c(-6, 6)) + 
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Reds',
+    direction = 1,
+  ) +   labs(color = "Mutation type")
+
+
+plots <- plot_ins / plot_del
+
+ggsave("Figures/SI/SI_8.png", height = 4, width = 5, plots)
+ggsave("Figures/SI/SI_8.pdf", height = 4, width = 5, plots)
+
+```
+
+# Supplemental figure 9
+
+```{r}
+
+wide_summary_aligned_kir_scores <- pivot_wider(
+  aligned_kir_scores %>% filter(mutation_type != 'X') %>%
+    group_by(pos, mutation_type) %>%
+    summarize(mean_score = mean(S_score)),
+  names_from = mutation_type, values_from = mean_score
+)
+
+window_length = 10
+
+y = tibble('D_I' = rollapply(wide_summary_aligned_kir_scores,
+  width = window_length,
+  function(x) cor(x[, 2], x[, 3]),
+  by.column=FALSE
+  ),
+  'D_M' = rollapply(wide_summary_aligned_kir_scores,
+  width = window_length,
+  function(x) cor(x[, 2], x[, 4]),
+  by.column=FALSE
+  ),
+  'D_S' = rollapply(wide_summary_aligned_kir_scores,
+  width = window_length,
+  function(x) cor(x[, 2], x[, 5]),
+  by.column=FALSE
+  ),
+  'I_M' = rollapply(wide_summary_aligned_kir_scores,
+  width = window_length,
+  function(x) cor(x[, 3], x[, 4]),
+  by.column=FALSE
+  ),
+  'I_S' = rollapply(wide_summary_aligned_kir_scores,
+  width = window_length,
+  function(x) cor(x[, 3], x[, 5]),
+  by.column=FALSE
+  ),
+  'M_S' = rollapply(wide_summary_aligned_kir_scores,
+  width = window_length,
+  function(x) cor(x[, 4], x[, 5]),
+  by.column=FALSE
+  ),
+  'pos' = wide_summary_aligned_kir_scores$pos[1:(length(wide_summary_aligned_kir_scores$pos) - window_length + 1)]
+)
+
+y <- y %>% pivot_longer(!pos, 
+                        names_to = "type_pair", 
+                        values_to = "correlation"
+)
+
+plot_pos_type_density <- ggplot(data = y %>% filter(type_pair %in% c('D_I', 'D_M', 'I_M'))) +
+  geom_density(aes(x = correlation, color = type_pair)) +
+  scale_color_discrete(labels = c("corr(deletion,insertion)", "corr(deletion,missense)", "corr(insertion,missense)")) +
+  geom_vline(xintercept=0, linetype="dotted") +
+  labs(x = "Correlation (Pearson)", y = "Density", color = "") +
+  theme_classic() +
+  theme(legend.text = element_text(size = 14),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 16))
+
+ggsave("Figures/SI/SI_9.pdf", height = 3.5, width = 10, plot_pos_type_density)
+```
+
+
+# Supplemental figure 10
+```{r}
+order <- c('D_3','D_2','D_1','I_3','I_2','I_1','H', 'K', 'R', 'D', 'E',
+          'C','M','N','Q','S','T','A','I','L','V','W','F',
+          'Y','G','P')
+
+variant_names <- c("Del x3",'Del x2','Del x1','Ins x3 (GSG)','Ins x (GS)','Ins x1 (G)','H', 'K', 'R', 'D', 'E',
+          'C','M','N','Q','S','T','A','I','L','V','W','F',
+          'Y','G','P')
+
+kir_wt_1 = str_split(substr(kir21_wt_sequence, 1, 150), '')[[1]]
+kir_wt_2 = str_split(substr(kir21_wt_sequence, 151, 300), '')[[1]]
+kir_wt_3 = str_split(substr(kir21_wt_sequence, 301, 440), '')[[1]]
+
+#surface plot
+Surface_row1 = ggplot(data = kir_scores[kir_scores$pos %in% c(2:150),], 
+                      aes(x = pos, y = factor(variants, level = order, labels = variant_names), fill = S_SE )) +
+  geom_tile(aes(color = as.factor(is.wt)), size = 0.2) +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0,l1=0.2, l3 = 0.2, p1=0.9, p3 = .4, p4 = 0.9,rev=FALSE, na.value = 'lightyellow',limits=c(-5,3)) + 
+  scale_color_manual(values = c(NA,'green')) +
+  scale_x_continuous(breaks = seq(0, 400, by = 5),
+                     expand = c(0,0),
+                     sec.axis = sec_axis(
+                      trans = ~.,
+                      name = "Sequence",
+                      breaks = seq(1, 150),
+                      labels = kir_wt_1,
+                      guide = derive()
+                    )) +
+  coord_fixed(ratio = 1) +
+  theme(
+    panel.background = element_rect(fill = "white",
+                                    colour = "white",
+                                    size = 0.5, linetype = "solid"),
+    panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                    colour = "lightgray"), 
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 6),
+    axis.text.y = element_text(size = 4),
+    axis.text = element_text(size = 4),
+    axis.text.x.top = element_text(angle = 0, hjust = 0.5, family = "mono"),
+    axis.ticks = element_blank(),
+    legend.position="none"
+  ) +
+  labs(y = "Mutation", x = "Position")
+
+Surface_row2 = ggplot(data = kir_scores[kir_scores$pos %in% c(151:300),], 
+                      aes(x = pos, y = factor(variants, level = order), fill = S_SE)) +
+  geom_tile(aes(color = as.factor(is.wt)), size = 0.2) +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0,l1=0.2, l3 = 0.2, p1=0.9, p3 = .4, p4 = 0.9,rev=FALSE, na.value = 'lightyellow',limits=c(-5,3)) + 
+  scale_color_manual(values = c(NA,'green')) +
+  scale_x_continuous(breaks = seq(0, 400, by = 5),
+                     expand = c(0,0),
+                     sec.axis = sec_axis(
+                      trans = ~.,
+                      name = "Sequence",
+                      breaks = seq(151, 300),
+                      labels = kir_wt_2,
+                      guide = derive()
+                    )) +
+  coord_fixed(ratio = 1) +
+  theme(
+    panel.background = element_rect(fill = "white",
+                                    colour = "white",
+                                    size = 0.5, linetype = "solid"),
+    panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                    colour = "lightgray"), 
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 6),
+    axis.text.y = element_text(size = 4),
+    axis.text = element_text(size = 4),
+    axis.text.x.top = element_text(angle = 0, hjust = 0.5, family = "mono"),
+    axis.ticks = element_blank(),
+    legend.position="none"
+  ) +
+  labs(y = "Mutation", x = "Position")
+
+Surface_row3 = ggplot(data = kir_scores[kir_scores$pos %in% c(301:440),], 
+                      aes(x = pos, y = factor(variants, level = order), fill = S_SE)) +
+  geom_tile(aes(color = as.factor(is.wt)), size = 0.2) +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0,l1=0.2, l3 = 0.2, p1=0.9, p3 = .4, p4 = 0.9,rev=FALSE, na.value = 'lightyellow',limits=c(-5,3)) + 
+  scale_color_manual(values = c(NA,'green')) +
+  scale_x_continuous(breaks = seq(0, 440, by = 5),
+                     expand = c(0,0),
+                     sec.axis = sec_axis(
+                      trans = ~.,
+                      name = "Sequence",
+                      breaks = seq(301, 440),
+                      labels = kir_wt_3,
+                      guide = derive()
+                    )) +
+  coord_fixed(ratio = 1) +
+  theme(
+    panel.background = element_rect(fill = "white",
+                                    colour = "white",
+                                    size = 0.5, linetype = "solid"),
+    panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                    colour = "lightgray"), 
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 6),
+    axis.text.y = element_text(size = 4),
+    axis.text = element_text(size = 4),
+    axis.text.x.top = element_text(angle = 0, hjust = 0.5, family = "mono"),
+    axis.ticks = element_blank(),
+    legend.position="none"
+  ) +
+  labs(y = "Mutation", x = "Position")
+
+
+Surface_DMS_SE = ggarrange(Surface_row1, Surface_row2, Surface_row3,
+                        nrow = 3, ncol = 1)
+
+ggsave("Figures/SI/SI_10.pdf", height = 7, width = 8.5, Surface_DMS_SE)
+ggsave("Figures/SI/SI_10.png", height = 7, width = 8.5, Surface_DMS_SE)
+```
+
+
+# Supplemental figure 11
+
+```{r}
+new_2 <- ggplot(data = aligned_kir_scores %>% 
+                    filter(mutation_type != 'X') %>%
+                  mutate(SS_simple = 
+                           fct_collapse(SS_simple,
+                                        'Structured' = c('B', 'H'),
+                                        'Unstructured' = c('C', 'NCT'))), 
+                aes(x=SS_simple, y=S_score, fill = SS_simple)) +
+                geom_violin() +
+                geom_hline(yintercept=0, linetype="dotted") +
+                labs(x = "Mutation type", y = "Enrich2 score", fill = "") +
+                theme_classic() +
+                theme(legend.position = "none",
+                      axis.text = element_text(size = 14),
+                      axis.title = element_text(size = 16))
+
+ggsave("Figures/Panels/SI/SI_11.pdf", height = 3.5, width = 6, new_2)
+ggsave("Figures/Panels/SI/SI_11.png", height = 3.5, width = 6, new_2)
+```
+
+# Supplemental figure 12. Impact of varying insertion length on M1 and slide helix. 
+
+```{r}
+plot_I <- ggplot(aligned_kir_scores %>% filter(mutation_type == "I"), aes(x=Kir2_1_FLAG_Resno_mus, y=S_score, color=variants)) + 
+  geom_line() +
+  labs(x = "Position", color = "Insertion length", y="Surface score", levels = c("1", "2", "3")) + 
+  theme_classic() +
+  scale_x_continuous(lim = c(60, 110)) +
+  scale_color_brewer(
+    type = "seq",
+    palette = 'Blues',
+    direction = 1,
+  ) + 
+  geom_hline(yintercept=0, linetype="dotted")
+
+ggsave("Figures/SI/SI_12B.png", height = 3, width = 7)
+ggsave("Figures/SI/SI_12B.pdf", height = 3, width = 7)
+
+```
+
+
+# Supplemental figure 13. Score distributions of beta sheets vs. alpha helices across different mutation types. 
+
+```{r}
+new_4 <- ggplot(data = aligned_kir_scores %>% 
+                  filter(mutation_type != 'X') %>% 
+                  filter(SS_simple %in% c('B','H')) %>% 
+                  group_by(SS_simple), 
+                aes(x=mutation_type, y=S_score, fill=SS_simple)) +
+                geom_violin() +
+                geom_hline(yintercept=0, linetype="dotted") +
+                scale_fill_discrete(labels = c("Beta sheet", "Alpha helix")) +
+                scale_x_discrete(labels = c("Deletions", "Insertions", "Nonsense", "Synonymous")) +
+                labs(x = "Mutation type", y = "Enrich2 score", fill = "Secondary structure") +
+                theme_classic() +
+                theme(legend.title = element_text(size = 16),
+                  legend.text = element_text(size = 14),
+                      axis.text = element_text(size = 14),
+                      axis.title = element_text(size = 16))
+
+ggsave("Figures/SI/SI_13.pdf", height = 3.5, width = 10, new_4)
+ggsave("Figures/SI/SI_13.png", height = 3.5, width = 10, new_4)
+
+```
+
+
+
+# Supplemental figure 14
+
+
+
+
+
+
+## Statistical tests
+
+Calculate Wilcoxon rank sum test for surface scores b/w structured and unstructured regions.
+
+```{r}
+
+print(
+  aligned_kir_scores %>% filter(mutation_type != 'X') %>% 
+    group_by(SS_simple) %>%
+    summarize(n = n())
+)
+
+print(
+  aligned_kir_scores %>% filter(mutation_type != 'X') %>% 
+    mutate(SS_simple = fct_collapse(SS_simple,
+                                    'Structured' = c('B', 'H'),
+                                    'Unstructured' = c('C', 'NCT'))) %>%
+    group_by(SS_simple) %>%
+    summarize(n = n())
+)
+
+print(
+  aligned_kir_scores %>% filter(mutation_type != 'X') %>% 
+    group_by(SS_simple) %>%
+    get_summary_stats(S_score)
+)
+
+
+
+
+test <- wilcox.test(formula = S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                    filter(mutation_type != 'X') %>%
+                    mutate(SS_simple = 
+                           fct_collapse(SS_simple,
+                                        'Structured' = c('B', 'H'),
+                                        'Unstructured' = c('C', 'NCT'))),
+                   exact = FALSE,
+                   paired = FALSE,
+                   conf.int = TRUE,
+                   na.action = na.omit)
+print(test)
+
+
+test <- ks.test(formula = S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                    filter(mutation_type != 'X') %>%
+                    mutate(SS_simple = 
+                           fct_collapse(SS_simple,
+                                        'Structured' = c('B', 'H'),
+                                        'Unstructured' = c('C', 'NCT'))),
+                   exact = FALSE,
+                   paired = FALSE,
+                   conf.int = TRUE,
+                   na.action = na.omit)
+print(test)
+
+
+test <- kruskal.test(S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                    filter(mutation_type != 'X') %>%
+                     group_by(SS_simple),
+                   na.action = na.omit)
+print(test)
+```
+
+
+### Third
+Probability in evolution should be explicitly correlated with fitness scores
+
+What if we make fitness a binary property and do a contingency table wrt. the occurance of indels?
+
+The indel probabilities in the pfam profile are somewhat binary - they're mostly at a near-baseline level, but
+in certain positions they are much higher. The values are the negative exponential arguments of probability.
+
+From looking at the data, for MD sub-4 values are "high" and above are baseline.
+For MI, it's 3.5.
+
+We will use the Fisher exact test because n is small.
+
+```{r}
+wide_DI_sign_aligned_kir_scores <- pivot_wider(
+aligned_kir_scores %>% filter(mutation_type != 'X') %>%
+    group_by(pos, mutation_type) %>%
+    summarize(sign_mean_score = sign(mean(S_score)),
+              sign_MD = sign(first(MD) - 4),
+              sign_MI = sign(first(MI) - 3.5),
+              MD = first(MD), MI = first(MI)),
+  names_from = mutation_type, values_from = sign_mean_score
+)
+
+wide_DI_sign_aligned_kir_scores %>% group_by(D) %>%
+  summarise(MD = mean(MD, na.rm = TRUE), MI = mean(MI, na.rm = TRUE))
+
+wide_DI_sign_aligned_kir_scores %>% group_by(I) %>%
+  summarise(MD = mean(MD, na.rm = TRUE), MI = mean(MI, na.rm = TRUE))
+
+wide_DI_sign_aligned_kir_scores %>% group_by(S) %>%
+  summarise(MD = mean(MD, na.rm = TRUE), MI = mean(MI, na.rm = TRUE))
+
+wide_DI_sign_aligned_kir_scores %>% group_by(M) %>%
+  summarise(MD = mean(MD, na.rm = TRUE), MI = mean(MI, na.rm = TRUE))
+
+# Test statistic for indels 
+wide_DI_sign_aligned_kir_scores %>% ungroup() %>%
+  filter(!is.na(sign_MD) & !is.na(D)) %>%
+  count(sign_MD, D) %>%
+  pivot_wider(names_from = sign_MD, values_from = n) %>%
+  select(-D) %>%
+  as.matrix() %>%
+  fisher.test()
+
+wide_DI_sign_aligned_kir_scores %>% ungroup() %>%
+  filter(!is.na(sign_MI) & !is.na(I)) %>%
+  count(sign_MI, I) %>%
+  pivot_wider(names_from = sign_MI, values_from = n) %>%
+  select(-I) %>%
+  as.matrix() %>%
+  fisher.test()
+
+
+```
+
+### Fourth
+"beta sheets overall appear to be far more sensitive to insertions and deletions than alpha helices". The authors could easily perform a statistical test to see if this is true, correct?
+
+```{r}
+
+print(
+  aligned_kir_scores %>% filter(mutation_type != 'X') %>% 
+    filter(SS_simple %in% c('B','H')) %>% 
+    group_by(SS_simple) %>%
+    get_summary_stats(S_score)
+)
+
+
+test <- wilcox.test(formula = S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                  filter(mutation_type != 'X') %>% 
+                  filter(SS_simple %in% c('B','H')) %>% 
+                  group_by(SS_simple),
+                   exact = FALSE,
+                   paired = FALSE,
+                   conf.int = TRUE,
+                   na.action = na.omit)
+print(test)
+
+test <- ks.test(formula = S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                  filter(mutation_type != 'X') %>% 
+                  filter(SS_simple %in% c('B','H')) %>% 
+                  group_by(SS_simple),
+                   exact = FALSE,
+                   paired = FALSE,
+                   conf.int = TRUE,
+                   na.action = na.omit)
+print(test)
+
+test <- kruskal.test(S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                  filter(mutation_type != 'X') %>% 
+                  filter(SS_simple %in% c('B','H')) %>% 
+                  group_by(SS_simple),
+                   na.action = na.omit)
+print(test)
+
+test <- wilcox.test(formula = S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                  filter(mutation_type %in% c('I', 'D')) %>% 
+                  filter(SS_simple %in% c('B','H')) %>% 
+                  group_by(SS_simple),
+                   exact = FALSE,
+                   paired = FALSE,
+                   conf.int = TRUE,
+                   na.action = na.omit)
+print(test)
+
+test <- ks.test(formula = S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                  filter(mutation_type %in% c('I', 'D')) %>% 
+                  filter(SS_simple %in% c('B','H')) %>% 
+                  group_by(SS_simple),
+                   exact = FALSE,
+                   paired = FALSE,
+                   conf.int = TRUE,
+                   na.action = na.omit)
+print(test)
+
+test <- kruskal.test(S_score~ SS_simple,
+                   data = aligned_kir_scores %>% 
+                  filter(mutation_type %in% c('I', 'D')) %>% 
+                  filter(SS_simple %in% c('B','H')) %>% 
+                  group_by(SS_simple),
+                   na.action = na.omit)
+print(test)
+```
